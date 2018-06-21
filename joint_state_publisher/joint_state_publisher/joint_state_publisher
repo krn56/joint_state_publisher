@@ -29,6 +29,9 @@ import math
 
 RANGE = 10000
 
+global zeros_initialized
+zeros_initialized = False
+
 
 def get_param(name, value=None):
     private = "~%s" % name
@@ -119,6 +122,8 @@ class JointStatePublisher():
                 else:
                     zeroval = 0
 
+                plan_navigation = get_param("plan_navigation", False)        
+
                 joint = {'min': minval, 'max': maxval, 'zero': zeroval}
                 if self.pub_def_positions:
                     joint['position'] = zeroval
@@ -131,8 +136,35 @@ class JointStatePublisher():
                     joint['continuous'] = True
                 self.free_joints[name] = joint
 
+        global zeros_initialized
+        if not zeros_initialized:
+
+            
+            print("adding zeros joints: continuos type")
+            joint = {'min':-pi/180.0, 'max':pi/180.0, 'position':zeroval, 'continuous':True}
+            
+            for name in self.zeros:
+
+                if self.zeros and name in self.zeros:
+                    zeroval = self.zeros[name]
+                else:
+                    zeroval = 0
+
+                print(name)
+                print(zeroval)
+            
+                # print("free joints before: ", len(self.free_joints))
+                self.free_joints.update({name: joint})
+                self.joint_list.append(name)
+                # print("free joints after: ", len(self.free_joints))
+
+            zeros_initialized = True
+
+
     def __init__(self):
         description = get_param('robot_description')
+
+        print("local joint_state_publisher started")
 
         self.free_joints = {}
         self.joint_list = [] # for maintaining the original order of the joints
@@ -172,29 +204,57 @@ class JointStatePublisher():
     def source_cb(self, msg):
         for i in range(len(msg.name)):
             name = msg.name[i]
-            if name not in self.free_joints:
-                continue
 
-            if msg.position:
-                position = msg.position[i]
-            else:
-                position = None
-            if msg.velocity:
-                velocity = msg.velocity[i]
-            else:
-                velocity = None
-            if msg.effort:
-                effort = msg.effort[i]
-            else:
-                effort = None
+            plan_navigation = get_param("plan_navigation", False)
 
-            joint = self.free_joints[name]
-            if position is not None:
-                joint['position'] = position
-            if velocity is not None:
-                joint['velocity'] = velocity
-            if effort is not None:
-                joint['effort'] = effort
+            if not plan_navigation:
+                if name not in self.free_joints:
+                    continue
+
+                if msg.position:
+                    position = msg.position[i]
+                else:
+                    position = None
+                if msg.velocity:
+                    velocity = msg.velocity[i]
+                else:
+                    velocity = None
+                if msg.effort:
+                    effort = msg.effort[i]
+                else:
+                    effort = None
+
+                joint = self.free_joints[name]
+                if position is not None:
+                    joint['position'] = position
+                if velocity is not None:
+                    joint['velocity'] = velocity
+                if effort is not None:
+                    joint['effort'] = effort
+            else:
+                print("if joint name doesn't exist, new continuos type joint will be added")
+                if msg.position:
+                    position = msg.position[i]
+                else:
+                    position = None
+                if msg.velocity:
+                    velocity = msg.velocity[i]
+                else:
+                    velocity = None
+                if msg.effort:
+                    effort = msg.effort[i]
+                else:
+                    effort = None
+
+                
+                joint = {'min':-pi/180.0, 'max':pi/180.0, 'zero':position, 'velocity':velocity, 'effort':effort}
+
+                
+                self.free_joints.update({name: joint})
+                self.joint_list.append(name)
+
+
+
 
         if self.gui is not None:
             # signal instead of directly calling the update_sliders method, to switch to the QThread
@@ -216,6 +276,7 @@ class JointStatePublisher():
 
             # Initialize msg.position, msg.velocity, and msg.effort.
             has_position = len(self.dependent_joints.items()) > 0
+            # print("has_position is: ", has_position)
             has_velocity = False
             has_effort = False
             for name, joint in self.free_joints.items():
@@ -264,7 +325,13 @@ class JointStatePublisher():
                     joint = self.free_joints[parent]
 
                 if has_position and 'position' in joint:
+                    # print(joint['position'])
+                    # print("has_position inside is: ", has_position)
+                    # print("factor: ", factor)
+                    # print("offset: ", offset)
+                    # print(self.joint_list[i])
                     msg.position[i] = joint['position'] * factor + offset
+                    # print("end")
                 if has_velocity and 'velocity' in joint:
                     msg.velocity[i] = joint['velocity'] * factor
                 if has_effort and 'effort' in joint:
